@@ -1,0 +1,109 @@
+version: 2.1
+
+jobs:
+  build:
+    docker:
+      - image: debian:buster
+    steps:
+      - checkout
+      - run:
+          name: Install GCC
+          command: |
+            apt update
+            apt install -y gcc
+      - run:
+          name: Build an executable
+          command: gcc -o realpath realpath.c
+      - store_artifacts:
+          path: realpath
+      - persist_to_workspace:
+          root: .
+          paths:
+            - realpath
+
+  test-docker:
+    parameters:
+      image:
+        type: string
+    docker:
+      - image: << parameters.image >>
+    steps:
+      - attach_workspace:
+          at: .
+      - run:
+          name: Check kernel version
+          command: uname -a
+      - run:
+          name: Check glibc version
+          command: ldd --version
+      - run: ./realpath /root
+
+  test-machine:
+    parameters:
+      machine-image:
+        type: string
+      docker-image:
+        type: string
+    machine:
+      image: << parameters.machine-image >>
+    steps:
+      - attach_workspace:
+          at: .
+      - run:
+          name: Check kernel version
+          command: uname -a
+      - run:
+          name: Check glibc version
+          command: ldd --version
+      - run:
+          name: Run natively
+          command: ./realpath /root
+      - run:
+          name: Run in a Docker container
+          command: |
+            docker run --rm -v $(pwd):/root << parameters.docker-image >> bash -c 'echo; ldd --version; echo; /root/realpath /root'
+
+  pacman-demo:
+    docker:
+      - image: archlinux
+    steps:
+      - run:
+          command: pacman -Sy
+          when: always
+      - run:
+          command: pacman -b /var/lib/pacman -Sy
+          when: always
+
+workflows:
+  realpath-demo:
+    jobs:
+      - build
+      - test-docker:
+          name: test-docker-<< matrix.image >>
+          matrix:
+            parameters:
+              image:
+                - archlinux
+                - debian:buster
+                - fedora
+                - ubuntu:21.04
+          requires:
+            - build
+      - test-machine:
+          name: test-machine-<< matrix.machine-image >>-<< matrix.docker-image >>
+          matrix:
+            parameters:
+              machine-image:
+                - ubuntu-2004:202104-01
+                - ubuntu-1604:202104-01
+              docker-image:
+                - archlinux
+                - debian:buster
+                - fedora
+                - ubuntu:21.04
+          requires:
+            - build
+
+  pacman-demo:
+    jobs:
+      - pacman-demo
