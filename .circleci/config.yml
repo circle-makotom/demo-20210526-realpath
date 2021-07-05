@@ -44,14 +44,28 @@ jobs:
         type: string
       docker-image:
         type: string
+      use-newer-containerd?:
+        type: boolean
+        default: false
     machine:
       image: << parameters.machine-image >>
     steps:
       - attach_workspace:
           at: .
+      - when:
+          condition: << parameters.use-newer-containerd? >>
+          steps:
+            - run:
+                name: Install newer containerd
+                command: |
+                  curl -JOL https://download.docker.com/linux/ubuntu/dists/xenial/pool/stable/amd64/containerd.io_1.4.3-2_amd64.deb
+                  sudo apt install -y ./containerd.io_1.4.3-2_amd64.deb
       - run:
           name: Check kernel version
           command: uname -a
+      - run:
+          name: Check containerd version
+          command: sudo apt list --installed containerd.io
       - run:
           name: Check glibc version
           command: ldd --version
@@ -90,17 +104,34 @@ workflows:
           requires:
             - build
       - test-machine:
-          name: test-machine-<< matrix.machine-image >>-<< matrix.docker-image >>
+          name: test-machine-<< matrix.machine-image >>-<< matrix.docker-image >>-<< matrix.use-newer-containerd? >>
           matrix:
             parameters:
               machine-image:
-                - ubuntu-2004:202104-01
                 - ubuntu-1604:202104-01
               docker-image:
                 - archlinux
                 - debian:buster
                 - fedora
                 - ubuntu:21.04
+              use-newer-containerd?:
+                - true
+                - false
+          requires:
+            - build
+      - test-machine:
+          name: test-machine-<< matrix.machine-image >>-<< matrix.docker-image >>-<< matrix.use-newer-containerd? >>
+          matrix:
+            parameters:
+              machine-image:
+                - ubuntu-2004:202104-01
+              docker-image:
+                - archlinux
+                - debian:buster
+                - fedora
+                - ubuntu:21.04
+              use-newer-containerd?:
+                - false
           requires:
             - build
 
